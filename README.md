@@ -68,3 +68,16 @@ This codebase is built on top of https://github.com/seohongpark/horizon-reductio
   url = {http://arxiv.org/abs/2512.10926},
 }
 ```
+
+- eval
+
+python experiments/visualize_bridge_soar_dqc_q.py \
+    --checkpoint_dir="/gpfs/projects/socialrl/sriyash/dqc_bridge_soar_dqc_infinite_horizon/dqc/bridge_soar_dqc_infinite_horizon/sd000s_137913.0.20260605_163017/" \
+    --restore_epoch=-1 \
+    --output_dir=exp/eval_videos/dqc_infinite_horizon \
+    --k_episodes=10 \
+    --k_states=0 \
+    --seed=0 \
+    --fps=10 \
+    --score_batch_size=64 \
+    --q_agg=min
