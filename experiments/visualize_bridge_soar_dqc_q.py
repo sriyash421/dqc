@@ -325,10 +325,16 @@ def _axis_limits(values: np.ndarray) -> tuple[float, float]:
 
 
 def _sample_episode_refs(dataset, rng: np.random.Generator, k_episodes: int) -> list[tuple[str, dict]]:
-    bridge_count = (k_episodes + 1) // 2
-    soar_count = k_episodes - bridge_count
+    # Distribute the requested episodes across whatever sources the dataset config
+    # defines (e.g. just "eggplant", or "bridge_v2" + "soar_failure").
+    source_names = [source.name for source in dataset.sources]
+    counts = [k_episodes // len(source_names)] * len(source_names)
+    for i in range(k_episodes - sum(counts)):
+        counts[i % len(source_names)] += 1
     refs = []
-    for source_name, count in [("bridge_v2", bridge_count), ("soar_failure", soar_count)]:
+    for source_name, count in zip(source_names, counts):
+        if count == 0:
+            continue
         episodes = dataset.episodes[source_name]
         indices = rng.choice(len(episodes), size=count, replace=count > len(episodes))
         refs.extend((source_name, episodes[int(idx)]) for idx in indices)
@@ -381,15 +387,17 @@ def _write_episode_videos(agent, dataset, text_processor, rng, output_dir: Path,
 
 
 def _sample_bridge_states(dataset, rng: np.random.Generator, k_states: int):
-    episodes = dataset.episodes["bridge_v2"]
+    # Use the first configured source for the noisy-chunk scatter (e.g. "eggplant").
+    source_name = dataset.sources[0].name
+    episodes = dataset.episodes[source_name]
     refs = []
     for _ in range(k_states):
         episode = episodes[int(rng.integers(0, len(episodes)))]
         horizon = int(episode["length"]) - 1
         if horizon <= 0:
-            raise ValueError(f"Invalid Bridge episode length: {episode}")
+            raise ValueError(f"Invalid episode length for source {source_name}: {episode}")
         t = int(rng.integers(0, horizon))
-        refs.append((episode, t))
+        refs.append((source_name, episode, t))
     return refs
 
 
@@ -398,8 +406,8 @@ def _write_noise_scatter(agent, dataset, text_processor, rng, output_dir: Path, 
         return {"csv": None, "png": None, "num_rows": 0, "finite_rows": 0, "nonfinite_rows": 0}
 
     rows = []
-    for state_id, (episode, t) in enumerate(_sample_bridge_states(dataset, rng, k_states)):
-        batch = _load_episode_batch(dataset, "bridge_v2", episode)
+    for state_id, (source_name, episode, t) in enumerate(_sample_bridge_states(dataset, rng, k_states)):
+        batch = _load_episode_batch(dataset, source_name, episode)
         _validate_episode_batch(batch, dataset.backup_horizon)
         batch, task_text = _embed_episode_language(batch, text_processor)
         expert = batch["high_value_action_chunks"][t].astype(np.float32)

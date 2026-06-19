@@ -136,9 +136,10 @@ def main(_):
     _prepare_configs(agent_config, data_config)
 
     run = setup_wandb(
-        project="dqc",
+        entity=os.environ.get("WANDB_ENTITY") or None,
+        project=os.environ.get("WANDB_PROJECT", "dqc"),
         group=FLAGS.run_group,
-        name=get_exp_name(FLAGS.seed),
+        name=os.environ.get("WANDB_NAME") or get_exp_name(FLAGS.seed),
         tags=FLAGS.tags.split(","),
         mode="offline" if FLAGS.wandb_offline else "online",
     )
@@ -198,8 +199,9 @@ def main(_):
             save_agent(agent, FLAGS.save_dir, i)
 
     train_logger.close()
-    with open(os.path.join(FLAGS.save_dir, "token.tk"), "w") as f:
-        f.write(run.url)
+    if getattr(run, "url", None):
+        with open(os.path.join(FLAGS.save_dir, "token.tk"), "w") as f:
+            f.write(run.url)
 
 
 if __name__ == "__main__":
