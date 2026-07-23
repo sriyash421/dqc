@@ -28,6 +28,7 @@ flags.DEFINE_string("save_dir", "/gpfs/projects/socialrl/sriyash/dqc_bridge_soar
 flags.DEFINE_string("restore_path", None, "Restore path.")
 flags.DEFINE_integer("restore_epoch", None, "Restore epoch.")
 flags.DEFINE_integer("offline_steps", 1000000, "Number of offline training steps.")
+flags.DEFINE_integer("start_step", 0, "First loop step (resume: saves/logs use global step; the restored agent carries the optimizer count).")
 flags.DEFINE_integer("log_interval", 1000, "Logging interval.")
 flags.DEFINE_integer("save_interval", 100000, "Saving interval.")
 flags.DEFINE_string("tags", "BridgeSoarDQC", "Comma-separated WandB tags.")
@@ -171,7 +172,7 @@ def main(_):
     train_logger = CsvLogger(os.path.join(FLAGS.save_dir, "train.csv"))
     first_time = time.time()
     last_time = time.time()
-    for i in tqdm.tqdm(range(FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
+    for i in tqdm.tqdm(range(FLAGS.start_step, FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
         data_start = time.time()
         batch = _process_batch(next(train_iter), text_processor, agent_config.backup_horizon, action_dim)
         _check_batch(batch, agent_config, data_config)

@@ -331,7 +331,30 @@ class BridgeDQCChunkAgent(flax.struct.PyTreeNode):
         params = networks.init(init_rng, **network_args)["params"]
         params["modules_target_chunk_critic"] = params["modules_chunk_critic"]
         params["modules_target_action_critic"] = params["modules_action_critic"]
-        tx = optax.adam(config["lr"])
+        # LR schedule (opt-in): with lr_decay_steps>0, linearly decay lr -> lr_end over
+        # lr_decay_steps and then HOLD at lr_end — "decay then stabilize at a low lr";
+        # optional linear warmup 0->lr over lr_warmup_steps first. lr_decay_steps=0
+        # (default) keeps the original CONSTANT lr, so base/older runs are unchanged.
+        # Hand-built with jnp.minimum/maximum (no optax.linear_schedule / jnp.clip) so it
+        # is robust to the installed jax/optax versions.
+        _lr0 = float(config["lr"])
+        _decay = int(config.get("lr_decay_steps", 0))
+        if _decay > 0:
+            _lr_end = float(config.get("lr_end", 0.1 * _lr0))
+            _warm = int(config.get("lr_warmup_steps", 0))
+
+            def _lr_sched(step, _lr0=_lr0, _lr_end=_lr_end, _decay=_decay, _warm=_warm):
+                step = jnp.asarray(step, jnp.float32)
+                prog = jnp.minimum(jnp.maximum((step - _warm) / _decay, 0.0), 1.0)
+                decayed = _lr0 + (_lr_end - _lr0) * prog          # lr0 -> lr_end, then holds
+                if _warm > 0:
+                    warm = _lr0 * jnp.minimum(step / _warm, 1.0)  # 0 -> lr0 over _warm
+                    return jnp.where(step < _warm, warm, decayed)
+                return decayed
+
+            tx = optax.adam(_lr_sched)
+        else:
+            tx = optax.adam(_lr0)
         network = TrainState.create(networks, params, tx=tx)
         config.action_dim = action_dim
         config.chunk_action_dim = full_chunk_dim
@@ -344,6 +367,12 @@ def get_config():
         dict(
             agent_name="bridge_dqc_chunk",
             lr=3e-4,
+            # LR schedule (opt-in). lr_decay_steps=0 -> CONSTANT lr (default, matches
+            # the base run). lr_decay_steps>0 -> linear decay lr -> lr_end over that many
+            # steps, then HOLD at lr_end; optional linear warmup 0->lr over lr_warmup_steps.
+            lr_decay_steps=0,
+            lr_end=3e-5,
+            lr_warmup_steps=0,
             batch_size=256,
             discount=0.98,
             tau=0.005,
